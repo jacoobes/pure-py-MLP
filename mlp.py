@@ -1,9 +1,10 @@
 import math
 from abc import ABC, abstractmethod
-from typing import List , Tuple
+from typing import Generator, Tuple, List
 import numpy as np
+from functools import reduce
 
-def batch_generator(train_x, train_y, batch_size):
+def batch_generator(train_x: np.ndarray, train_y: np.ndarray, batch_size: int) -> Generator[Tuple[np.ndarray, np.ndarray]]:
     """
     Generator that yields batches of train_x and train_y.
 
@@ -13,7 +14,12 @@ def batch_generator(train_x, train_y, batch_size):
 
     :return tuple: (batch_x, batch_y) where batch_x has shape (B, f) and batch_y has shape (B, q). The last batch may be smaller.
     """
-    pass
+    splitx = np.array_split(train_x, batch_size)
+    splity = np.array_split(train_y, batch_size)
+
+    for t in zip(splitx, splity):
+        yield t
+    
 
 class ActivationFunction(ABC):
     @abstractmethod
@@ -72,7 +78,7 @@ class Linear(ActivationFunction):
 
 class LossFunction(ABC):
     @abstractmethod
-    def loss(self, y_true, y_pred) -> np.floating:
+    def loss(self, y_true, y_pred) -> np.ndarray:
         ...
        
     @abstractmethod
@@ -81,16 +87,16 @@ class LossFunction(ABC):
 
 
 class SquaredError(LossFunction):
-    def loss(self, y_true, y_pred):
-        diffs = [((y - yhat) ** 2) for y, yhat in zip(y_true, y_pred)]
-        return np.mean(diffs)
+    def loss(self, y_true, y_pred) -> np.ndarray:
+        diffs = [((y - yhat) ** 2) * 0.5 for y, yhat in zip(y_true, y_pred)]
+        return np.ndarray(diffs)
         
     def derivative(self, y_true, y_pred):
         pass
 
 class CrossEntropy(LossFunction):
-    def loss(self, y_true, y_pred) -> np.floating:
-        return -1 * np.sum([y * math.log(yhat) for y, yhat  in zip(y_true, y_pred)])
+    def loss(self, y_true, y_pred) -> np.ndarray:
+        return np.ndarray([y * math.log(yhat) for y, yhat  in zip(y_true, y_pred)])
         
 
     def derivative(self, y_true, y_pred):
@@ -117,18 +123,24 @@ class Layer:
         self.delta = None
 
         # Initialize weights and biaes
-        self.W = None  # weights
-        self.b = None  # biases
 
-    def forward(self, h: np.ndarray):
+        # we need a weights matrix where each row is a connection between this layer and next
+        # that way we can multiply and get m x N * M x n
+        self.W = np.random.rand(fan_out, fan_in)
+        self.b = np.random.rand(fan_out) # biases
+
+    def forward(self, h: np.ndarray) -> np.ndarray:
         """
         Computes the activations for this layer
 
         :param h: input to layer
         :return: layer activations
         """
-        self.activations = None
-
+        
+        self.activations = np.ndarray(
+            [self.activation_function.forward(np.dot(weightv, h) + b) for weightv, b in zip(self.W, self.b) ]
+        )
+        
         return self.activations
 
     def backward(self, h: np.ndarray, delta: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
@@ -142,11 +154,14 @@ class Layer:
         dL_dW = None
         dL_db = None
         self.delta = None
+
+
+
         return dL_dW, dL_db
 
 
 class MultilayerPerceptron:
-    def __init__(self, layers: Tuple[Layer]):
+    def __init__(self, layers: List[Layer]):
         """
         Create a multilayer perceptron (densely connected multilayer neural network)
         :param layers: list or Tuple of layers
@@ -159,23 +174,41 @@ class MultilayerPerceptron:
         :param x: network input
         :return: network output
         """
+        layer1 = self.layers[0].forward(x)
+            
+        # as i grow older i realize life is reducible
+        def layer_reducer(acc: np.ndarray, lyr: Layer): 
+            return lyr.forward(acc)
+        return reduce(layer_reducer, self.layers[1:], layer1)
 
-        return None
 
     def backward(self, loss_grad: np.ndarray, input_data: np.ndarray) -> Tuple[list, list]:
         """
         Applies backpropagation to compute the gradients of the weights and biases for all layers in the network
-        :param loss_grad: gradient of the loss function
+        :param loss_gradient: gradient of the loss function
         :param input_data: network's input data
         :return: (List of weight gradients for all layers, List of bias gradients for all layers)
         """
+        # loss grad gives us direction of steepest ascent. Terefore, to minimize, 
+        # we take steps in opposite direciton
+
+
         dl_dw_all = []
         dl_db_all = []
 
 
-        return None, None
+        return dl_dw_all,dl_db_all 
 
-    def train(self, train_x: np.ndarray, train_y: np.ndarray, val_x: np.ndarray, val_y: np.ndarray, loss_func: LossFunction, learning_rate: float=1E-3, batch_size: int=16, epochs: int=32) -> Tuple[np.ndarray, np.ndarray]:
+    def train(self, 
+        train_x: np.ndarray,
+        train_y: np.ndarray,
+        val_x: np.ndarray,
+        val_y: np.ndarray,
+        loss_func: LossFunction,
+        learning_rate: float=1E-3, 
+        batch_size: int=16,
+        epochs: int=32
+    ) -> Tuple[np.ndarray, np.ndarray]:
         """
         Train the multilayer perceptron
 
@@ -189,7 +222,18 @@ class MultilayerPerceptron:
         :param epochs: number of epochs
         :return:
         """
-        training_losses = None
-        validation_losses = None
+        batches = batch_generator(train_x, train_y, batch_size) 
+        training_losses = []
+        validation_losses = [] 
+        for epoch in range(1, epochs+1):
+            for input, target in batches:
+                feed_forward_output = self.forward(input);
+                loss_gradient = loss_func.loss(target, feed_forward_output)
+                backprop = self.backward(loss_gradient, feed_forward_output)
+                
 
-        return training_losses, validation_losses
+            # average loss
+            training_losses.append(0)
+
+
+        return np.ndarray(training_losses), np.ndarray(validation_losses)
