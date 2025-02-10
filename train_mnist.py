@@ -2,6 +2,17 @@
 import argparse
 import os
 from mlp import MultilayerPerceptron
+import struct
+import numpy as np
+
+def read_mnistdata():
+    with open('data/t10k-images-idx3-ubyte','rb') as f:
+        magic, size = struct.unpack(">II", f.read(8))
+        nrows, ncols = struct.unpack(">II", f.read(8))
+        data = np.fromfile(f, dtype=np.dtype(np.uint8).newbyteorder('>'))
+        data = data.reshape((size, nrows, ncols))
+    return data 
+
 
 def download_mnist(data_dir):
     """

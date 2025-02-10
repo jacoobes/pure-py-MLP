@@ -138,7 +138,7 @@ class Layer:
         """
         
         self.activations = np.ndarray(
-            [self.activation_function.forward(np.dot(weightv, h) + b) for weightv, b in zip(self.W, self.b) ]
+            [self.activation_function.forward(np.dot(weightv, h) + b) for weightv, b in zip(self.W, self.b)]
         )
         
         return self.activations
@@ -151,12 +151,19 @@ class Layer:
         :param delta: delta term from layer above
         :return: (weight gradients, bias gradients)
         """
+
+        # derivative of loss with respective to Weights
+        # weight gradients = 
         dL_dW = None
+        
+        
+        
+        # derivative of loss with respective to biases
         dL_db = None
         self.delta = None
 
-
-
+        
+        
         return dL_dW, dL_db
 
 
@@ -191,11 +198,12 @@ class MultilayerPerceptron:
         """
         # loss grad gives us direction of steepest ascent. Terefore, to minimize, 
         # we take steps in opposite direciton
-
-
         dl_dw_all = []
         dl_db_all = []
-
+        
+        for layer in reversed(self.layers):
+            layer.backward(input_data )
+            ...
 
         return dl_dw_all,dl_db_all 
 
@@ -226,6 +234,7 @@ class MultilayerPerceptron:
         training_losses = []
         validation_losses = [] 
         for epoch in range(1, epochs+1):
+            print("Epoch", epoch)
             for input, target in batches:
                 feed_forward_output = self.forward(input);
                 loss_gradient = loss_func.loss(target, feed_forward_output)
