@@ -126,7 +126,9 @@ class Layer:
 
         # we need a weights matrix where each row is a connection between this layer and next
         # that way we can multiply and get m x N * M x n
-        self.W = np.random.rand(fan_out, fan_in)
+        scale = 1/max(1., (2+2)/2.)
+        limit = math.sqrt(3.0 * scale)
+        self.W = np.random.uniform(-limit, limit, size=(fan_in, fan_out))
         self.b = np.random.rand(fan_out) # biases
 
     def forward(self, h: np.ndarray) -> np.ndarray:
@@ -154,12 +156,19 @@ class Layer:
 
         # derivative of loss with respective to Weights
         # weight gradients = 
+
+        # self.activation_function
+        # self.weights, # self.b
+        
         dL_dW = None
         
         
         
         # derivative of loss with respective to biases
         dL_db = None
+
+
+        # saving the computation of do_dL
         self.delta = None
 
         
@@ -201,9 +210,9 @@ class MultilayerPerceptron:
         dl_dw_all = []
         dl_db_all = []
         
-        for layer in reversed(self.layers):
-            layer.backward(input_data )
-            ...
+        for lyr in reversed(self.layers):
+            lyr.backward(h=input_data, delta=np.ndarray([]))
+            pass
 
         return dl_dw_all,dl_db_all 
 
