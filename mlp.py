@@ -118,6 +118,7 @@ class Layer:
         self.activation_function = activation_function
 
         # this will store the activations (forward prop)
+        # self.activations = self.O 
         self.activations = None
         # this will store the delta term (dL_dPhi, backward prop)
         self.delta = None
@@ -128,7 +129,10 @@ class Layer:
         # that way we can multiply and get m x N * M x n
         scale = 1/max(1., (2+2)/2.)
         limit = math.sqrt(3.0 * scale)
-        self.W = np.random.uniform(-limit, limit, size=(fan_in, fan_out))
+        self.W = np.random.uniform(
+                        -limit,
+                        limit,
+                        size=(fan_in, fan_out))
         self.b = np.random.rand(fan_out) # biases
 
     def forward(self, h: np.ndarray) -> np.ndarray:
@@ -140,19 +144,23 @@ class Layer:
         """
         
         self.activations = np.ndarray(
-            [self.activation_function.forward(np.dot(weightv, h) + b) for weightv, b in zip(self.W, self.b)]
+           [self.activation_function.forward(np.dot(weightv, h) + b) for weightv, b in zip(self.W, self.b)]
         )
-        
         return self.activations
 
-    def backward(self, h: np.ndarray, delta: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+    def backward(self, 
+        os: np.ndarray,
+        delta: np.ndarray
+    ) -> Tuple[np.ndarray, np.ndarray]:
         """
         Apply backpropagation to this layer and return the weight and bias gradients
 
-        :param h: input to this layer
-        :param delta: delta term from layer above
+        :param os: input to this layer :param delta: delta term from layer above
         :return: (weight gradients, bias gradients)
         """
+
+        # O = h
+        # Z = h before activation
 
         # derivative of loss with respective to Weights
         # weight gradients = 
@@ -160,17 +168,26 @@ class Layer:
         # self.activation_function
         # self.weights, # self.b
         
-        dL_dW = None
-        
-        
+        dO_dZ  = np.array([ 
+            self.activation_function.derivative(f) for f in os
+        ])
+        print("dO_dZ", dO_dZ)
+
+
+        dO_dL = np.array([])
+        print("dL_dZ", dO_dL)
+
+        hadmard =  np.multiply(dO_dL, dO_dZ)
+         
+        dL_dW = [] @ hadmard
         
         # derivative of loss with respective to biases
-        dL_db = None
+        dL_db = hadmard @ [] 
+        
 
 
         # saving the computation of do_dL
         self.delta = None
-
         
         
         return dL_dW, dL_db
@@ -188,7 +205,7 @@ class MultilayerPerceptron:
         """
         This takes the network input and computes the network output (forward propagation)
         :param x: network input
-        :return: network output
+        :return: network output, Y hat
         """
         layer1 = self.layers[0].forward(x)
             
@@ -211,7 +228,7 @@ class MultilayerPerceptron:
         dl_db_all = []
         
         for lyr in reversed(self.layers):
-            lyr.backward(h=input_data, delta=np.ndarray([]))
+            lyr.backward(os=input_data, delta=np.ndarray([]))
             pass
 
         return dl_dw_all,dl_db_all 
