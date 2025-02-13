@@ -92,6 +92,7 @@ class SquaredError(LossFunction):
         return np.ndarray(diffs)
         
     def derivative(self, y_true, y_pred):
+        
         pass
 
 class CrossEntropy(LossFunction):
@@ -120,6 +121,9 @@ class Layer:
         # this will store the activations (forward prop)
         # self.activations = self.O 
         self.activations = None
+
+
+        self.Z: np.ndarray = None
         # this will store the delta term (dL_dPhi, backward prop)
         self.delta = None
 
@@ -146,10 +150,11 @@ class Layer:
         self.activations = np.ndarray(
            [self.activation_function.forward(np.dot(weightv, h) + b) for weightv, b in zip(self.W, self.b)]
         )
+        self.Z = [np.dot(weightv, h) + b for weightv, b in zip(self.W, self.b)]
         return self.activations
 
     def backward(self, 
-        os: np.ndarray,
+        dodl: np.ndarray,
         delta: np.ndarray
     ) -> Tuple[np.ndarray, np.ndarray]:
         """
@@ -167,22 +172,23 @@ class Layer:
 
         # self.activation_function
         # self.weights, # self.b
-        
+        if self.activations is None or self.Z is None:
+            raise Exception("Layer has not been activated with forward()")
+
         dO_dZ  = np.array([ 
-            self.activation_function.derivative(f) for f in os
+            self.activation_function.derivative(f) for f in self.activations
         ])
         print("dO_dZ", dO_dZ)
 
 
-        dO_dL = np.array([])
-        print("dL_dZ", dO_dL)
+        print("dL_dZ", dodl)
 
-        hadmard =  np.multiply(dO_dL, dO_dZ)
+        hadmard =  np.multiply(dodl, dO_dZ)
          
-        dL_dW = [] @ hadmard
+        dL_dW = np.transpose(self.Z) @ hadmard
         
-        # derivative of loss with respective to biases
-        dL_db = hadmard @ [] 
+        # derivative of loss with respective to biases is just 1?
+        dL_db = hadmard
         
 
 
@@ -228,8 +234,9 @@ class MultilayerPerceptron:
         dl_db_all = []
         
         for lyr in reversed(self.layers):
-            lyr.backward(os=input_data, delta=np.ndarray([]))
-            pass
+            dl_dw, dl_db = lyr.backward(dodl=input_data, delta=np.ndarray([]))
+            dl_dw_all.append(dl_dw)
+            dl_db_all.append(dl_db)
 
         return dl_dw_all,dl_db_all 
 
@@ -264,8 +271,8 @@ class MultilayerPerceptron:
             for input, target in batches:
                 feed_forward_output = self.forward(input);
                 loss_gradient = loss_func.loss(target, feed_forward_output)
-                backprop = self.backward(loss_gradient, feed_forward_output)
-                
+                do_dL = loss_func.derivative(target, feed_forward_output) 
+                backprop = self.backward(loss_gradient, do_dL)
 
             # average loss
             training_losses.append(0)
