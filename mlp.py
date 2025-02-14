@@ -32,16 +32,16 @@ class ActivationFunction(ABC):
 
 
 class Sigmoid(ActivationFunction):
-    def forward(self, x):
+    def forward(self, x: np.ndarray) -> np.ndarray:
         return (1 / (1 + np.exp(-x)))
 
-    def derivative(self, x):
+    def derivative(self, x) -> np.ndarray:
         gx = self.forward(x)
         return gx * (1 - gx)
         
 
 class Tanh(ActivationFunction):
-    def forward(self, x):
+    def forward(self, x: np.ndarray):
         return math.tanh(x)
 
     def derivative(self, x):
@@ -50,7 +50,7 @@ class Tanh(ActivationFunction):
 
 
 class Relu(ActivationFunction):
-    def forward(self, x ):
+    def forward(self, x: np.ndarray):
         return np.maximum(0, x)
 
     def derivative(self, x:  np.ndarray):
@@ -82,26 +82,25 @@ class LossFunction(ABC):
         ...
        
     @abstractmethod
-    def derivative(self, y_true, y_pred):
+    def derivative(self, y_true, y_pred) -> np.ndarray:
         ...
 
 
 class SquaredError(LossFunction):
     def loss(self, y_true, y_pred) -> np.ndarray:
-        diffs = [((y - yhat) ** 2) * 0.5 for y, yhat in zip(y_true, y_pred)]
+        diffs = [((y - yhat) ** 2) for y, yhat in zip(y_true, y_pred)]
         return np.ndarray(diffs)
         
-    def derivative(self, y_true, y_pred):
-        
-        pass
+    def derivative(self, y_true, y_pred) -> np.ndarray:
+        return np.ndarray([2 * (y - yhat) for y, yhat in zip(y_true, y_pred)])
 
 class CrossEntropy(LossFunction):
     def loss(self, y_true, y_pred) -> np.ndarray:
         return np.ndarray([y * math.log(yhat) for y, yhat  in zip(y_true, y_pred)])
         
 
-    def derivative(self, y_true, y_pred):
-        pass
+    def derivative(self, y_true, y_pred) -> np.ndarray:
+        raise NotImplemented()
 
 
 
@@ -123,20 +122,17 @@ class Layer:
         self.activations = None
 
 
-        self.Z: np.ndarray = None
+        self.Z: np.ndarray|None = None
         # this will store the delta term (dL_dPhi, backward prop)
-        self.delta = None
+        self.delta: np.ndarray|None = None
 
         # Initialize weights and biaes
 
         # we need a weights matrix where each row is a connection between this layer and next
         # that way we can multiply and get m x N * M x n
-        scale = 1/max(1., (2+2)/2.)
-        limit = math.sqrt(3.0 * scale)
-        self.W = np.random.uniform(
-                        -limit,
-                        limit,
-                        size=(fan_in, fan_out))
+        scale = max(1., 6/(fan_in+fan_out))
+        limit = math.sqrt(scale)
+        self.W = np.random.uniform(-limit, limit, size=(fan_in, fan_out))
         self.b = np.random.rand(fan_out) # biases
 
     def forward(self, h: np.ndarray) -> np.ndarray:
@@ -146,16 +142,13 @@ class Layer:
         :param h: input to layer
         :return: layer activations
         """
-        
-        self.activations = np.ndarray(
-           [self.activation_function.forward(np.dot(weightv, h) + b) for weightv, b in zip(self.W, self.b)]
-        )
-        self.Z = [np.dot(weightv, h) + b for weightv, b in zip(self.W, self.b)]
+        self.Z = np.array([np.dot(weightv, h) + b for weightv, b in zip(self.W, self.b)])
+        self.activations = self.activation_function.forward(self.Z)
         return self.activations
 
     def backward(self, 
         dodl: np.ndarray,
-        delta: np.ndarray
+        delta: np.ndarray | None
     ) -> Tuple[np.ndarray, np.ndarray]:
         """
         Apply backpropagation to this layer and return the weight and bias gradients
@@ -164,36 +157,23 @@ class Layer:
         :return: (weight gradients, bias gradients)
         """
 
-        # O = h
-        # Z = h before activation
-
-        # derivative of loss with respective to Weights
-        # weight gradients = 
-
-        # self.activation_function
-        # self.weights, # self.b
         if self.activations is None or self.Z is None:
             raise Exception("Layer has not been activated with forward()")
 
-        dO_dZ  = np.array([ 
-            self.activation_function.derivative(f) for f in self.activations
-        ])
-        print("dO_dZ", dO_dZ)
+        dO_dZ  = self.activation_function.derivative(self.activations)
 
-
-        print("dL_dZ", dodl)
-
-        hadmard =  np.multiply(dodl, dO_dZ)
-         
-        dL_dW = np.transpose(self.Z) @ hadmard
+#        print("dO_dZ", dO_dZ)
+#        print("do_dL", dodl)
         
-        # derivative of loss with respective to biases is just 1?
-        dL_db = hadmard
-        
+        hadmard =  np.multiply(delta or dodl, dO_dZ)
 
+        dL_dW = np.dot(self.Z.T, hadmard)
+
+        # derivative of Z wrt b is just 1!
+        dL_db = np.sum(hadmard, axis=0)
 
         # saving the computation of do_dL
-        self.delta = None
+        self.delta = np.dot(hadmard, self.W)
         
         
         return dL_dW, dL_db
@@ -205,6 +185,8 @@ class MultilayerPerceptron:
         Create a multilayer perceptron (densely connected multilayer neural network)
         :param layers: list or Tuple of layers
         """
+        assert len(layers) >= 3
+
         self.layers = layers
 
     def forward(self, x: np.ndarray) -> np.ndarray:
@@ -233,8 +215,20 @@ class MultilayerPerceptron:
         dl_dw_all = []
         dl_db_all = []
         
-        for lyr in reversed(self.layers):
-            dl_dw, dl_db = lyr.backward(dodl=input_data, delta=np.ndarray([]))
+        # calculate first layer backprop and delta
+        rev_layers = reversed(self.layers)
+        outputlayer = next(rev_layers)
+        output_dodl = loss_grad @ input_data
+        outputlayer.backward(output_dodl, delta=None)
+
+
+        cur_delta = outputlayer.delta
+        for lyr in rev_layers:
+            dodl = loss_grad @ input_data
+            dl_dw, dl_db = lyr.backward(dodl=dodl, delta=cur_delta)
+
+            
+            cur_delta = lyr.delta
             dl_dw_all.append(dl_dw)
             dl_db_all.append(dl_db)
 
@@ -266,14 +260,14 @@ class MultilayerPerceptron:
         batches = batch_generator(train_x, train_y, batch_size) 
         training_losses = []
         validation_losses = [] 
-        for epoch in range(1, epochs+1):
-            print("Epoch", epoch)
+        for epoch in range(epochs):
+            print("Epoch", epoch+1)
             for input, target in batches:
                 feed_forward_output = self.forward(input);
-                loss_gradient = loss_func.loss(target, feed_forward_output)
-                do_dL = loss_func.derivative(target, feed_forward_output) 
-                backprop = self.backward(loss_gradient, do_dL)
-
+                # loss gradient is derivative of components
+                loss_gradient = loss_func.derivative(target, feed_forward_output)
+                dl_dw_all, dl_db_all = self.backward(loss_gradient, feed_forward_output)
+                
             # average loss
             training_losses.append(0)
 

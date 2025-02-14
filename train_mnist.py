@@ -1,18 +1,51 @@
 #!/usr/bin/env python3
 import argparse
 import os
-from mlp import MultilayerPerceptron
+from mlp import Layer, MultilayerPerceptron, Sigmoid, SquaredError, batch_generator
 import struct
 import numpy as np
+from array import array
 
-def read_mnistdata():
-    with open('data/t10k-images-idx3-ubyte','rb') as f:
-        magic, size = struct.unpack(">II", f.read(8))
-        nrows, ncols = struct.unpack(">II", f.read(8))
-        data = np.fromfile(f, dtype=np.dtype(np.uint8).newbyteorder('>'))
-        data = data.reshape((size, nrows, ncols))
-    return data 
+#
+# MNIST Data Loader Class
+#
+class MnistDataloader(object):
+    def __init__(self, training_images_filepath,training_labels_filepath,
+                 test_images_filepath, test_labels_filepath):
+        self.training_images_filepath = training_images_filepath
+        self.training_labels_filepath = training_labels_filepath
+        self.test_images_filepath = test_images_filepath
+        self.test_labels_filepath = test_labels_filepath
+    
+    def read_images_labels(self, images_filepath, labels_filepath):        
+        labels = []
+        with open(labels_filepath, 'rb') as file:
+            magic, size = struct.unpack(">II", file.read(8))
+            if magic != 2049:
+                raise ValueError('Magic number mismatch, expected 2049, got {}'.format(magic))
+            labels = array("B", file.read())        
+        
+        with open(images_filepath, 'rb') as file:
+            magic, size, rows, cols = struct.unpack(">IIII", file.read(16))
+            if magic != 2051:
+                raise ValueError('Magic number mismatch, expected 2051, got {}'.format(magic))
+            image_data = array("B", file.read())        
+        images = []
+        for i in range(size):
+            images.append([0] * rows * cols)
+        for i in range(size):
+            img = np.array(image_data[i * rows * cols:(i + 1) * rows * cols])
+            img = img.reshape(28, 28)
+            images[i][:] = img            
+        
+        return images, labels
+            
+    def load_data(self):
+        x_train, y_train = self.read_images_labels(self.training_images_filepath, self.training_labels_filepath)
+        x_test, y_test = self.read_images_labels(self.test_images_filepath, self.test_labels_filepath)
+        return (np.array(x_train), np.array(y_train)),(np.array(x_test), np.arra(y_test))        
 
+ 
 
 def download_mnist(data_dir):
     """
@@ -38,40 +71,29 @@ def instantiate_model():
     Placeholder function to instantiate your MLP model.
     """
     print("Instantiating the MLP model...")
-    # Return a dummy model object (or None) as a placeholder.
-    
-    model = MultilayerPerceptron([])
-    print("Model instantiated.")
-    return model
+    δ = Sigmoid()
+    layers = [
+       Layer(fan_in=28*28, fan_out=10,    activation_function= δ),
+       Layer(fan_in=10,    fan_out=16,    activation_function= δ),
+       Layer(fan_in=16,    fan_out=24,    activation_function= δ),
+       Layer(fan_in=16,    fan_out=10,    activation_function= δ),
+    ]
+    return MultilayerPerceptron(layers)
 
 def train_model(model: MultilayerPerceptron, data_dir, epochs, batch_size):
     """
     Placeholder function to 'train' the model.
     This function simulates training by printing dummy training and validation loss.
     """
-    print(f"Starting training for {epochs} epochs with a batch size of {batch_size}...")
-    for epoch in range(1, epochs + 1):
-        # In a real implementation, training logic would go here.
-        # Compute training loss and validation loss for each epoch.
-        print(f"\nEpoch {epoch}/{epochs}")
-        print("Training loss: [dummy value]")
-        print("Validation loss: [dummy value]")
-    print("\nTraining complete.")
 
 def main():
     parser = argparse.ArgumentParser(
         description="Train a Multi-Layer Perceptron on the MNIST dataset."
     )
     parser.add_argument(
-        "--data-dir",
-        type=str,
-        default="./data",
-        help="Directory to store/download the MNIST dataset."
-    )
-    parser.add_argument(
         "--epochs",
         type=int,
-        default=10,
+        default=32,
         help="Number of training epochs."
     )
     parser.add_argument(
@@ -81,11 +103,6 @@ def main():
         help="Training batch size."
     )
     parser.add_argument(
-        "--download",
-        action="store_true",
-        help="Download the MNIST dataset."
-    )
-    parser.add_argument(
         "--train",
         action="store_true",
         help="Train the MLP model."
@@ -93,15 +110,45 @@ def main():
 
     args = parser.parse_args()
 
-    if args.download:
-        # Download and split the MNIST dataset.
-        download_mnist(args.data_dir)
-        split_dataset(args.data_dir)
-
     if args.train:
         # Instantiate and train the model.
         model = instantiate_model()
-        train_model(model, args.data_dir, args.epochs, args.batch_size)
+        loss = SquaredError()
+        mnist_dataloader = MnistDataloader(
+            training_images_filepath="data/train-images.idx3-ubyte",
+            training_labels_filepath="./data/train-labels.idx1-ubyte",
+            test_images_filepath="./data/t10k-images.idx3-ubyte",
+            test_labels_filepath="./data/t10k-labels.idx1-ubyte",
+        )
+        (train_x, train_y), (test_x, test_y) = mnist_dataloader.load_data()
+
+        train_data = list(zip(train_x, train_y))  # Pair each image with its label
+        train_data = np.array(train_data, dtype=object)  # Convert to NumPy array
+
+        # Shuffle the data to ensure randomness
+        np.random.shuffle(train_data)
+
+        # Calculate the split index
+        split_idx = int(0.8 * len(train_data))  # 80% for training, 20% for validation
+
+        # Split the data
+        train_split = train_data[:split_idx]  # First 80% for training
+        val_split = train_data[split_idx:]    # Remaining 20% for validation
+
+        # Separate features (images) and labels
+        train_x_split = np.array([item[0] for item in train_split])
+        train_y_split = np.array([item[1] for item in train_split])
+
+        val_x_split = np.array([item[0] for item in val_split])
+        val_y_split = np.array([item[1] for item in val_split])       
+
+        model.train( 
+            train_x=train_x_split,
+            train_y=train_y_split,
+            val_x=val_x_split,
+            val_y=val_y_split,
+            loss_func=loss
+        )
 
 if __name__ == "__main__":
     main()
