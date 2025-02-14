@@ -4,7 +4,7 @@ from typing import Generator, Tuple, List
 import numpy as np
 from functools import reduce
 
-def batch_generator(train_x: np.ndarray, train_y: np.ndarray, batch_size: int) -> Generator[Tuple[np.ndarray, np.ndarray]]:
+def batch_generator(train_x: np.ndarray, train_y: np.ndarray, batch_size: int) :
     """
     Generator that yields batches of train_x and train_y.
 
@@ -14,11 +14,16 @@ def batch_generator(train_x: np.ndarray, train_y: np.ndarray, batch_size: int) -
 
     :return tuple: (batch_x, batch_y) where batch_x has shape (B, f) and batch_y has shape (B, q). The last batch may be smaller.
     """
-    splitx = np.array_split(train_x, batch_size)
-    splity = np.array_split(train_y, batch_size)
-
-    for t in zip(splitx, splity):
-        yield t
+    n_samples = train_x.shape[0]
+    
+    indices = np.arange(n_samples)
+    np.random.shuffle(indices)
+    
+    for start_idx in range(0, n_samples, batch_size):
+        end_idx = min(start_idx + batch_size, n_samples)
+        batch_indices = indices[start_idx:end_idx]
+        
+        yield train_x[batch_indices], train_y[batch_indices]
     
 
 class ActivationFunction(ABC):
@@ -89,14 +94,14 @@ class LossFunction(ABC):
 class SquaredError(LossFunction):
     def loss(self, y_true, y_pred) -> np.ndarray:
         diffs = [((y - yhat) ** 2) for y, yhat in zip(y_true, y_pred)]
-        return np.ndarray(diffs)
+        return np.array(diffs)
         
     def derivative(self, y_true, y_pred) -> np.ndarray:
-        return np.ndarray([2 * (y - yhat) for y, yhat in zip(y_true, y_pred)])
+        return np.array([2. * (y - yhat) for y, yhat in zip(y_true, y_pred)])
 
 class CrossEntropy(LossFunction):
     def loss(self, y_true, y_pred) -> np.ndarray:
-        return np.ndarray([y * math.log(yhat) for y, yhat  in zip(y_true, y_pred)])
+        return np.array([y * math.log(yhat) for y, yhat  in zip(y_true, y_pred)])
         
 
     def derivative(self, y_true, y_pred) -> np.ndarray:
@@ -132,7 +137,7 @@ class Layer:
         # that way we can multiply and get m x N * M x n
         scale = max(1., 6/(fan_in+fan_out))
         limit = math.sqrt(scale)
-        self.W = np.random.uniform(-limit, limit, size=(fan_in, fan_out))
+        self.W = np.random.uniform(-limit, limit, size=(fan_out, fan_in))
         self.b = np.random.rand(fan_out) # biases
 
     def forward(self, h: np.ndarray) -> np.ndarray:
@@ -165,7 +170,7 @@ class Layer:
 #        print("dO_dZ", dO_dZ)
 #        print("do_dL", dodl)
         
-        hadmard =  np.multiply(delta or dodl, dO_dZ)
+        hadmard =  np.multiply(dodl if delta is None else delta, dO_dZ)
 
         dL_dW = np.dot(self.Z.T, hadmard)
 
@@ -227,7 +232,6 @@ class MultilayerPerceptron:
             dodl = loss_grad @ input_data
             dl_dw, dl_db = lyr.backward(dodl=dodl, delta=cur_delta)
 
-            
             cur_delta = lyr.delta
             dl_dw_all.append(dl_dw)
             dl_db_all.append(dl_db)
@@ -261,15 +265,22 @@ class MultilayerPerceptron:
         training_losses = []
         validation_losses = [] 
         for epoch in range(epochs):
-            print("Epoch", epoch+1)
+            total_loss = 0
             for input, target in batches:
-                feed_forward_output = self.forward(input);
-                # loss gradient is derivative of components
-                loss_gradient = loss_func.derivative(target, feed_forward_output)
-                dl_dw_all, dl_db_all = self.backward(loss_gradient, feed_forward_output)
-                
+                for samp in input:
+                    feed_forward_output = self.forward(samp);
+                    # loss gradient is derivative of components
+                    loss_gradient = loss_func.derivative(target, feed_forward_output)
+                    
+                    dl_dw_all, dl_db_all = self.backward(loss_gradient, feed_forward_output)
+                    for wgrad, bgrad, layer in zip(reversed(dl_dw_all), reversed(dl_db_all), self.layers):
+                        layer.W  -= learning_rate * wgrad
+                        layer.b  -= learning_rate * bgrad
+
+                    val_loss = loss_func.loss(feed_forward_output, target)
+                    train_loss = total_loss / len(train_x)
             # average loss
             training_losses.append(0)
 
 
-        return np.ndarray(training_losses), np.ndarray(validation_losses)
+        return np.array(training_losses), np.array(validation_losses)

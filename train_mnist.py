@@ -43,7 +43,7 @@ class MnistDataloader(object):
     def load_data(self):
         x_train, y_train = self.read_images_labels(self.training_images_filepath, self.training_labels_filepath)
         x_test, y_test = self.read_images_labels(self.test_images_filepath, self.test_labels_filepath)
-        return (np.array(x_train), np.array(y_train)),(np.array(x_test), np.arra(y_test))        
+        return (np.array(x_train), np.array(y_train)),(np.array(x_test), np.array(y_test))        
 
  
 
@@ -73,10 +73,10 @@ def instantiate_model():
     print("Instantiating the MLP model...")
     δ = Sigmoid()
     layers = [
-       Layer(fan_in=28*28, fan_out=10,    activation_function= δ),
-       Layer(fan_in=10,    fan_out=16,    activation_function= δ),
-       Layer(fan_in=16,    fan_out=24,    activation_function= δ),
-       Layer(fan_in=16,    fan_out=10,    activation_function= δ),
+       Layer(fan_in=28*28,  fan_out=28*28,    activation_function= δ),
+       Layer(fan_in=28*28,  fan_out=74,    activation_function= δ),
+       Layer(fan_in=74,     fan_out=24,    activation_function= δ),
+       Layer(fan_in=24,     fan_out=16,    activation_function= δ),
     ]
     return MultilayerPerceptron(layers)
 
@@ -121,7 +121,7 @@ def main():
             test_labels_filepath="./data/t10k-labels.idx1-ubyte",
         )
         (train_x, train_y), (test_x, test_y) = mnist_dataloader.load_data()
-
+        train_x = train_x.reshape(train_x.shape[0], -1)
         train_data = list(zip(train_x, train_y))  # Pair each image with its label
         train_data = np.array(train_data, dtype=object)  # Convert to NumPy array
 
