@@ -76,7 +76,7 @@ def instantiate_model():
        Layer(fan_in=28*28,  fan_out=28*28,    activation_function= δ),
        Layer(fan_in=28*28,  fan_out=74,    activation_function= δ),
        Layer(fan_in=74,     fan_out=24,    activation_function= δ),
-       Layer(fan_in=24,     fan_out=16,    activation_function= δ),
+       Layer(fan_in=24,     fan_out=10,    activation_function= δ),
     ]
     return MultilayerPerceptron(layers)
 

@@ -137,8 +137,10 @@ class Layer:
         # that way we can multiply and get m x N * M x n
         scale = max(1., 6/(fan_in+fan_out))
         limit = math.sqrt(scale)
-        self.W = np.random.uniform(-limit, limit, size=(fan_out, fan_in))
+        self.W = np.random.uniform(-limit, limit, size=(fan_in, fan_out))
+        print("weights shape", self.W.shape)
         self.b = np.random.rand(fan_out) # biases
+        print("bias shape", self.b.shape)
 
     def forward(self, h: np.ndarray) -> np.ndarray:
         """
@@ -147,7 +149,7 @@ class Layer:
         :param h: input to layer
         :return: layer activations
         """
-        self.Z = np.array([np.dot(weightv, h) + b for weightv, b in zip(self.W, self.b)])
+        self.Z = h @ self.W + self.b
         self.activations = self.activation_function.forward(self.Z)
         return self.activations
 
@@ -170,9 +172,9 @@ class Layer:
 #        print("dO_dZ", dO_dZ)
 #        print("do_dL", dodl)
         
-        hadmard =  np.multiply(dodl if delta is None else delta, dO_dZ)
+        hadmard =  np.multiply(delta if delta else dodl, dO_dZ)
 
-        dL_dW = np.dot(self.Z.T, hadmard)
+        dL_dW = np.dot(np.transpose(self.activations), hadmard)
 
         # derivative of Z wrt b is just 1!
         dL_db = np.sum(hadmard, axis=0)
@@ -200,12 +202,11 @@ class MultilayerPerceptron:
         :param x: network input
         :return: network output, Y hat
         """
-        layer1 = self.layers[0].forward(x)
-            
         # as i grow older i realize life is reducible
         def layer_reducer(acc: np.ndarray, lyr: Layer): 
             return lyr.forward(acc)
-        return reduce(layer_reducer, self.layers[1:], layer1)
+
+        return reduce(layer_reducer, self.layers[1:], self.layers[0].forward(x))
 
 
     def backward(self, loss_grad: np.ndarray, input_data: np.ndarray) -> Tuple[list, list]:
@@ -217,20 +218,24 @@ class MultilayerPerceptron:
         """
         # loss grad gives us direction of steepest ascent. Terefore, to minimize, 
         # we take steps in opposite direciton
+        # input_data at first one is yhat
         dl_dw_all = []
         dl_db_all = []
         
         # calculate first layer backprop and delta
         rev_layers = reversed(self.layers)
         outputlayer = next(rev_layers)
-        output_dodl = loss_grad @ input_data
-        outputlayer.backward(output_dodl, delta=None)
+
+        
+        print("Backpropping...")
+        outputlayer.backward(loss_grad, delta=None)
 
 
         cur_delta = outputlayer.delta
         for lyr in rev_layers:
             dodl = loss_grad @ input_data
-            dl_dw, dl_db = lyr.backward(dodl=dodl, delta=cur_delta)
+            print("Backpropping...")
+            dl_dw, dl_db = lyr.backward(dodl=loss_grad, delta=cur_delta)
 
             cur_delta = lyr.delta
             dl_dw_all.append(dl_dw)
@@ -267,19 +272,19 @@ class MultilayerPerceptron:
         for epoch in range(epochs):
             total_loss = 0
             for input, target in batches:
-                for samp in input:
-                    feed_forward_output = self.forward(samp);
-                    # loss gradient is derivative of components
-                    loss_gradient = loss_func.derivative(target, feed_forward_output)
-                    
-                    dl_dw_all, dl_db_all = self.backward(loss_gradient, feed_forward_output)
-                    for wgrad, bgrad, layer in zip(reversed(dl_dw_all), reversed(dl_db_all), self.layers):
-                        layer.W  -= learning_rate * wgrad
-                        layer.b  -= learning_rate * bgrad
+                feed_forward_output = self.forward(input);
+                # loss gradient is derivative of components
+                loss_gradient = loss_func.derivative(target, feed_forward_output)
+                
+                dl_dw_all, dl_db_all = self.backward(loss_gradient, feed_forward_output)
+                for wgrad, bgrad, layer in zip(reversed(dl_dw_all), reversed(dl_db_all), self.layers):
+                    layer.W  -= learning_rate * wgrad
+                    layer.b  -= learning_rate * bgrad
 
-                    val_loss = loss_func.loss(feed_forward_output, target)
-                    train_loss = total_loss / len(train_x)
+                val_loss = loss_func.loss(feed_forward_output, target)
+                train_loss = total_loss / len(train_x)
             # average loss
+            print("Epoch ::", epoch, " ")
             training_losses.append(0)
 
 
