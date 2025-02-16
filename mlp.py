@@ -127,7 +127,7 @@ class Layer:
         self.activations = None
 
 
-        self.Z: np.ndarray|None = None
+        self.Z: np.ndarray
         # this will store the delta term (dL_dPhi, backward prop)
         self.delta: np.ndarray|None = None
 
@@ -154,8 +154,8 @@ class Layer:
         return self.activations
 
     def backward(self, 
-        dodl: np.ndarray,
-        delta: np.ndarray | None
+        prev: np.ndarray,
+        delta: np.ndarray
     ) -> Tuple[np.ndarray, np.ndarray]:
         """
         Apply backpropagation to this layer and return the weight and bias gradients
@@ -171,17 +171,16 @@ class Layer:
 
 #        print("dO_dZ", dO_dZ)
 #        print("do_dL", dodl)
-        
-        hadmard =  np.multiply(delta if delta else dodl, dO_dZ)
+        # on first layer, delta is derivative of loss
+        hadmard =  np.multiply(delta, dO_dZ)
 
-        dL_dW = np.dot(np.transpose(self.activations), hadmard)
+        dL_dW = np.dot(np.transpose(prev), hadmard)
 
         # derivative of Z wrt b is just 1!
         dL_db = np.sum(hadmard, axis=0)
 
         # saving the computation of do_dL
         self.delta = np.dot(hadmard, self.W)
-        
         
         return dL_dW, dL_db
 
@@ -224,20 +223,16 @@ class MultilayerPerceptron:
         
         # calculate first layer backprop and delta
         rev_layers = reversed(self.layers)
-        outputlayer = next(rev_layers)
-
-        
-        print("Backpropping...")
-        outputlayer.backward(loss_grad, delta=None)
-
-
-        cur_delta = outputlayer.delta
-        for lyr in rev_layers:
-            dodl = loss_grad @ input_data
+        cur_delta = None
+        cur_z = input_data
+        for cur_lyr in rev_layers:
             print("Backpropping...")
-            dl_dw, dl_db = lyr.backward(dodl=loss_grad, delta=cur_delta)
-
-            cur_delta = lyr.delta
+            if cur_delta is None:
+                dl_dw, dl_db = cur_lyr.backward(prev=cur_z, delta=loss_grad)
+            else:
+                dl_dw, dl_db = cur_lyr.backward(prev=cur_z, delta=cur_delta)
+            cur_delta = cur_lyr.delta
+            cur_z = cur_lyr.Z
             dl_dw_all.append(dl_dw)
             dl_db_all.append(dl_db)
 
