@@ -73,18 +73,12 @@ def instantiate_model():
     print("Instantiating the MLP model...")
     δ = Sigmoid()
     layers = [
-       Layer(fan_in=28*28,  fan_out=28*28,    activation_function= δ),
-       Layer(fan_in=28*28,  fan_out=74,    activation_function= δ),
-       Layer(fan_in=74,     fan_out=24,    activation_function= δ),
-       Layer(fan_in=24,     fan_out=10,    activation_function= δ),
+       Layer(fan_in=28*28,  fan_out=74,       activation_function= δ),
+       Layer(fan_in=74,     fan_out=24,       activation_function= δ),
+       Layer(fan_in=24,     fan_out=10,       activation_function= δ),
     ]
     return MultilayerPerceptron(layers)
 
-def train_model(model: MultilayerPerceptron, data_dir, epochs, batch_size):
-    """
-    Placeholder function to 'train' the model.
-    This function simulates training by printing dummy training and validation loss.
-    """
 
 def main():
     parser = argparse.ArgumentParser(

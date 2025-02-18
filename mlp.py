@@ -70,7 +70,13 @@ class Softmax(ActivationFunction):
         return exp_logits / np.sum(exp_logits, axis=1, keepdims=True)
 
     def derivative(self, x):
-        pass
+        bsize, num_classes = x.shape
+        jacobian = np.zeros((bsize, num_classes, num_classes))
+
+        for i in range(bsize):
+            s_i = x[i].reshape(-1, 1) # col vec
+            jacobian[i] = np.diagflat(s_i) - (s_i @ s_i.T)
+        return jacobian
 
 
 class Linear(ActivationFunction):
@@ -101,11 +107,11 @@ class SquaredError(LossFunction):
 
 class CrossEntropy(LossFunction):
     def loss(self, y_true, y_pred) -> np.ndarray:
-        return np.array([y * math.log(yhat) for y, yhat  in zip(y_true, y_pred)])
+        return y_true * np.log(y_pred)
         
 
     def derivative(self, y_true, y_pred) -> np.ndarray:
-        raise NotImplemented()
+        raise (-y_true) / y_pred 
 
 
 
@@ -149,7 +155,7 @@ class Layer:
         :param h: input to layer
         :return: layer activations
         """
-        self.Z = h @ self.W + self.b
+        self.Z = (h @ self.W) + self.b
         self.activations = self.activation_function.forward(self.Z)
         return self.activations
 
@@ -166,22 +172,25 @@ class Layer:
 
         if self.activations is None or self.Z is None:
             raise Exception("Layer has not been activated with forward()")
-
+        # 𝜕𝒁 𝑖 𝑶 𝑖
         dO_dZ  = self.activation_function.derivative(self.activations)
 
-#        print("dO_dZ", dO_dZ)
-#        print("do_dL", dodl)
-        # on first layer, delta is derivative of loss
-        hadmard =  np.multiply(delta, dO_dZ)
+        # on first layer, delta is derivative of loss with respect to yhats
+        if isinstance(self.activation_function, Softmax):
+            dL_dZ = np.einsum('bij, bj -> bi', dO_dZ, delta) 
+        else:
+            dL_dZ = np.multiply(delta, dO_dZ)
 
-        dL_dW = np.dot(np.transpose(prev), hadmard)
+        print("hadmard shape", dL_dZ.shape, "prev shape", prev.shape)
+        dL_dW = prev.T @ dL_dZ
+        # softmax = diag s-> s->T
 
         # derivative of Z wrt b is just 1!
-        dL_db = np.sum(hadmard, axis=0)
-
+        dL_db = np.sum(dL_dZ, axis=0, keepdims=True)
         # saving the computation of do_dL
-        self.delta = np.dot(hadmard, self.W)
-        
+        self.delta = np.dot(dL_dZ, self.W.T)
+
+
         return dL_dW, dL_db
 
 
@@ -222,21 +231,21 @@ class MultilayerPerceptron:
         dl_db_all = []
         
         # calculate first layer backprop and delta
-        rev_layers = reversed(self.layers)
-        cur_delta = None
+        cur_delta = loss_grad
+        print("loss_grad", cur_delta.shape)
         cur_z = input_data
-        for cur_lyr in rev_layers:
+        print("input", cur_z.shape)
+        for cur_lyr in reversed(self.layers):
             print("Backpropping...")
-            if cur_delta is None:
-                dl_dw, dl_db = cur_lyr.backward(prev=cur_z, delta=loss_grad)
-            else:
-                dl_dw, dl_db = cur_lyr.backward(prev=cur_z, delta=cur_delta)
+            dl_dw, dl_db = cur_lyr.backward(prev=cur_z, delta=cur_delta)
             cur_delta = cur_lyr.delta
-            cur_z = cur_lyr.Z
+            cur_z = cur_lyr.activations
+            assert cur_delta is not None and cur_z is not None
+
             dl_dw_all.append(dl_dw)
             dl_db_all.append(dl_db)
 
-        return dl_dw_all,dl_db_all 
+        return dl_dw_all,dl_db_all
 
     def train(self, 
         train_x: np.ndarray,
@@ -272,9 +281,9 @@ class MultilayerPerceptron:
                 loss_gradient = loss_func.derivative(target, feed_forward_output)
                 
                 dl_dw_all, dl_db_all = self.backward(loss_gradient, feed_forward_output)
-                for wgrad, bgrad, layer in zip(reversed(dl_dw_all), reversed(dl_db_all), self.layers):
-                    layer.W  -= learning_rate * wgrad
-                    layer.b  -= learning_rate * bgrad
+                for wgrad, bgrad, layer in zip(dl_dw_all, dl_db_all, reversed(self.layers)):
+                    layer.W  = layer.W - (learning_rate * wgrad)
+                    layer.b  = layer.b - (learning_rate * bgrad)
 
                 val_loss = loss_func.loss(feed_forward_output, target)
                 train_loss = total_loss / len(train_x)
