@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 import argparse
 import os
-from mlp import Layer, MultilayerPerceptron, Sigmoid, SquaredError, batch_generator
+from mlp import ActivationFunction, CrossEntropy, Layer, Linear, MultilayerPerceptron, Relu, Sigmoid, Softmax, SquaredError, Tanh, batch_generator
 import struct
 import numpy as np
 from array import array
@@ -66,17 +66,12 @@ def split_dataset(data_dir):
     # Insert code here to split the dataset.
     print("Dataset split complete.")
 
-def instantiate_model():
+def instantiate_model(layers: list[Layer]):
     """
     Placeholder function to instantiate your MLP model.
     """
     print("Instantiating the MLP model...")
-    δ = Sigmoid()
-    layers = [
-       Layer(fan_in=28*28,  fan_out=74,       activation_function= δ),
-       Layer(fan_in=74,     fan_out=24,       activation_function= δ),
-       Layer(fan_in=24,     fan_out=10,       activation_function= δ),
-    ]
+    
     return MultilayerPerceptron(layers)
 
 
@@ -106,7 +101,14 @@ def main():
 
     if args.train:
         # Instantiate and train the model.
-        model = instantiate_model()
+        δ = Relu()
+        sig = Sigmoid()
+        model = instantiate_model([
+            Layer(fan_in=28*28,  fan_out=128,       activation_function= sig),
+            Layer(fan_in=128,     fan_out=64,       activation_function= sig), 
+            Layer(fan_in=64,     fan_out=72,       activation_function= sig), 
+            Layer(fan_in=72,     fan_out=10,       activation_function= sig), 
+        ])
         loss = SquaredError()
         mnist_dataloader = MnistDataloader(
             training_images_filepath="data/train-images.idx3-ubyte",
@@ -116,8 +118,9 @@ def main():
         )
         (train_x, train_y), (test_x, test_y) = mnist_dataloader.load_data()
         train_x = train_x.reshape(train_x.shape[0], -1)
-        train_data = list(zip(train_x, train_y))  # Pair each image with its label
-        train_data = np.array(train_data, dtype=object)  # Convert to NumPy array
+        test_x =  test_x.reshape(test_x.shape[0], -1)
+        train_y = np.eye(10)[train_y]
+        train_data = np.array(list(zip(train_x, train_y)), dtype=object)  # Convert to NumPy array
 
         # Shuffle the data to ensure randomness
         np.random.shuffle(train_data)
@@ -132,17 +135,20 @@ def main():
         # Separate features (images) and labels
         train_x_split = np.array([item[0] for item in train_split])
         train_y_split = np.array([item[1] for item in train_split])
-
         val_x_split = np.array([item[0] for item in val_split])
-        val_y_split = np.array([item[1] for item in val_split])       
-
+        val_y_split = np.array([item[1] for item in val_split])
         model.train( 
             train_x=train_x_split,
             train_y=train_y_split,
             val_x=val_x_split,
             val_y=val_y_split,
-            loss_func=loss
+            loss_func=loss,
+            learning_rate=1E-3,
+            batch_size=32,
+            epochs=10
         )
+        print(test_x[0].shape)
+        print(model.forward(test_x[0]))
 
 if __name__ == "__main__":
     main()
