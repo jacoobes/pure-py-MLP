@@ -68,7 +68,7 @@ class Softmax(ActivationFunction):
 
     def derivative(self, x):
         if len(x.shape) == 1:
-            bsize = 2 
+            bsize = 1 
             num_classes = x.shape[0]
         else:
             bsize, num_classes = x.shape
@@ -215,7 +215,7 @@ class MultilayerPerceptron:
         # as i grow older i realize life is reducible
         def layer_reducer(acc: np.ndarray, lyr: Layer): 
             return lyr.forward(acc)
- 
+         
         return reduce(layer_reducer, self.layers, x)
 
 
@@ -234,11 +234,12 @@ class MultilayerPerceptron:
         
         # calculate first layer backprop and delta
         cur_delta = loss_grad
+
         for cur_lyr, prev_lyr in itertools.pairwise(reversed(self.layers)):
             assert cur_delta is not None and prev_lyr.activations is not None
             dl_dW, dl_db = cur_lyr.backward(prev_lyr.activations, cur_delta)
-            assert cur_delta is not None 
             cur_delta = cur_lyr.delta
+            assert cur_delta is not None 
             dl_dw_all.append(dl_dW)
             dl_db_all.append(dl_db)
 
@@ -256,7 +257,7 @@ class MultilayerPerceptron:
         val_x: np.ndarray,
         val_y: np.ndarray,
         loss_func: LossFunction,
-        learning_rate: float=1e-4 , 
+        learning_rate: float=1e-2, 
         batch_size: int=32,
         epochs: int=42
     ) -> Tuple[np.ndarray, np.ndarray]:
@@ -293,7 +294,7 @@ class MultilayerPerceptron:
                 total_loss += loss
 
             val_loss = np.mean(loss_func.loss(val_y, self.forward(val_x))) 
-            train_loss = total_loss /  bsize
+            train_loss = total_loss / bsize
 
             training_losses.append(train_loss)
             validation_losses.append(val_loss)
@@ -313,8 +314,6 @@ if __name__ == '__main__':
     a5 = Linear()
      
  
-    l1 = SquaredError()
-    l2 = CrossEntropy()
     print("test sigmoid act")
     np.testing.assert_array_almost_equal(a1.forward(np.array([0.5, 0.9])), np.array([0.622, 0.710]), decimal=3)
     print("test sigmoid derivative")

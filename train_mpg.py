@@ -63,7 +63,7 @@ def get_mpg_dataset():
     return X_train,y_train, X_val, y_val, X_test, y_test
 
 X_train,y_train, X_val, y_val, X_test, y_test = get_mpg_dataset()
-activation = Relu()
+activation = Linear()
 model = MultilayerPerceptron(
     layers=[
         Layer(fan_in=7, fan_out=5, activation_function=activation),

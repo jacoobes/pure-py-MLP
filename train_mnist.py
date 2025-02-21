@@ -105,7 +105,7 @@ def main():
         sig = Softmax()
         model = instantiate_model([
             Layer(fan_in=28*28,  fan_out=128,       activation_function=  sig),
-            Layer(fan_in=128,     fan_out=72,       activation_function= sig), 
+            Layer(fan_in=128,    fan_out=72,       activation_function= sig), 
             Layer(fan_in=72,     fan_out=10,       activation_function= sig), 
         ])
         loss = CrossEntropy()
