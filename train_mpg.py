@@ -1,7 +1,7 @@
 from ucimlrepo import fetch_ucirepo
 import pandas as pd
 from itertools import chain, combinations
-from mlp import Layer, Linear, MultilayerPerceptron, Sigmoid, Softmax, SquaredError
+from mlp import Layer, Linear, MultilayerPerceptron, Relu, Sigmoid, Softmax, SquaredError
 from sklearn.model_selection import train_test_split
 
 
@@ -63,12 +63,12 @@ def get_mpg_dataset():
     return X_train,y_train, X_val, y_val, X_test, y_test
 
 X_train,y_train, X_val, y_val, X_test, y_test = get_mpg_dataset()
-activation = Linear()
+activation = Relu()
 model = MultilayerPerceptron(
     layers=[
         Layer(fan_in=7, fan_out=5, activation_function=activation),
         Layer(fan_in=5, fan_out=6, activation_function=activation),
-        Layer(fan_in=6, fan_out=1, activation_function=Softmax()),
+        Layer(fan_in=6, fan_out=1, activation_function=activation),
     ]
 )
 

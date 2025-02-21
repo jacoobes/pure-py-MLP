@@ -102,14 +102,13 @@ def main():
     if args.train:
         # Instantiate and train the model.
         δ = Relu()
-        sig = Sigmoid()
+        sig = Softmax()
         model = instantiate_model([
-            Layer(fan_in=28*28,  fan_out=128,       activation_function= sig),
-            Layer(fan_in=128,     fan_out=64,       activation_function= sig), 
-            Layer(fan_in=64,     fan_out=72,       activation_function= sig), 
+            Layer(fan_in=28*28,  fan_out=128,       activation_function=  sig),
+            Layer(fan_in=128,     fan_out=72,       activation_function= sig), 
             Layer(fan_in=72,     fan_out=10,       activation_function= sig), 
         ])
-        loss = SquaredError()
+        loss = CrossEntropy()
         mnist_dataloader = MnistDataloader(
             training_images_filepath="data/train-images.idx3-ubyte",
             training_labels_filepath="./data/train-labels.idx1-ubyte",
@@ -117,8 +116,16 @@ def main():
             test_labels_filepath="./data/t10k-labels.idx1-ubyte",
         )
         (train_x, train_y), (test_x, test_y) = mnist_dataloader.load_data()
-        train_x = train_x.reshape(train_x.shape[0], -1)
-        test_x =  test_x.reshape(test_x.shape[0], -1)
+        train_x = train_x.reshape(train_x.shape[0], 784) / 255
+        test_x =  test_x.reshape(test_x.shape[0], 784) / 255
+        x_mean = np.mean(train_x)
+        x_std = np.std(test_x)
+
+        train_x = (train_x - x_mean) / x_std 
+        test_x = (test_x - x_mean)  /  x_std
+
+        
+
         train_y = np.eye(10)[train_y]
         train_data = np.array(list(zip(train_x, train_y)), dtype=object)  # Convert to NumPy array
 
@@ -143,11 +150,13 @@ def main():
             val_x=val_x_split,
             val_y=val_y_split,
             loss_func=loss,
-            learning_rate=1E-3,
-            batch_size=32,
-            epochs=10
+            learning_rate=1E-4,
+            batch_size=16,
+            epochs=26
         )
-        print(test_x[0].shape)
+
+
+        print(test_y[0])
         print(model.forward(test_x[0]))
 
 if __name__ == "__main__":

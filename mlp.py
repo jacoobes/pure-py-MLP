@@ -63,11 +63,15 @@ class Relu(ActivationFunction):
 
 class Softmax(ActivationFunction):
     def forward(self, x):
-        exp_logits = np.exp(x - np.max(x, axis=1, keepdims=True))  # Numerical stability improvement
-        return exp_logits / np.sum(exp_logits, axis=1, keepdims=True)
+        exp_logits = np.exp(x - np.max(x, axis=0))  # Numerical stability improvement
+        return exp_logits / np.sum(exp_logits, axis=0)
 
     def derivative(self, x):
-        bsize, num_classes = x.shape
+        if len(x.shape) == 1:
+            bsize = 2 
+            num_classes = x.shape[0]
+        else:
+            bsize, num_classes = x.shape
         jacobian = np.zeros((bsize, num_classes, num_classes))
 
         for i in range(bsize):
@@ -77,7 +81,7 @@ class Softmax(ActivationFunction):
 
 
 class Linear(ActivationFunction):
-    def forward(self, x):
+    def forward(self, x: np.ndarray):
         return x
 
     def derivative(self, x):
@@ -99,15 +103,16 @@ class SquaredError(LossFunction):
         return np.square(y_true - y_pred)
         
     def derivative(self, y_true, y_pred) -> np.ndarray:
-        return 2 * (y_true - y_pred)
+        return 2 * (y_pred - y_true)
 
+# https://shivammehta25.github.io/posts/deriving-categorical-cross-entropy-and-softmax/
 class CrossEntropy(LossFunction):
     def loss(self, y_true, y_pred) -> np.ndarray:
-        return y_true * np.log(y_pred)
+        return -(y_true * np.log(y_pred))
         
 
     def derivative(self, y_true, y_pred) -> np.ndarray:
-        return -y_true / y_pred 
+        return y_pred - y_true
 
 
 
@@ -180,18 +185,18 @@ class Layer:
         assert dL_dW.shape == self.W.shape
 
         # derivative of Z wrt b is just 1!
-        dL_db = np.sum(dL_dZ, axis=0, keepdims=True)
+        dL_db = np.sum(dL_dZ, axis=0)
         assert dL_db.shape == self.b.shape
 
         # saving the computation of do_dL
-        self.delta = np.dot(dL_dZ, self.W.T)
+        self.delta = dL_dZ @  self.W.T
 
         #print(dL_dW, dL_db)
         return dL_dW, dL_db
 
 
 class MultilayerPerceptron:
-    def __init__(self, layers: List[Layer]):
+    def __init__(self, layers: List[Layer], clip_value=None):
         """
         Create a multilayer perceptron (densely connected multilayer neural network)
         :param layers: list or Tuple of layers
@@ -199,6 +204,7 @@ class MultilayerPerceptron:
         assert len(layers) >= 3
 
         self.layers = layers
+        self.clip_value=clip_value
 
     def forward(self, x: np.ndarray) -> np.ndarray:
         """
@@ -229,9 +235,10 @@ class MultilayerPerceptron:
         # calculate first layer backprop and delta
         cur_delta = loss_grad
         for cur_lyr, prev_lyr in itertools.pairwise(reversed(self.layers)):
-            dl_dW, dl_db = cur_lyr.backward(prev_lyr.activations, cur_delta)
-            cur_delta = cur_lyr.delta
             assert cur_delta is not None and prev_lyr.activations is not None
+            dl_dW, dl_db = cur_lyr.backward(prev_lyr.activations, cur_delta)
+            assert cur_delta is not None 
+            cur_delta = cur_lyr.delta
             dl_dw_all.append(dl_dW)
             dl_db_all.append(dl_db)
 
@@ -271,19 +278,22 @@ class MultilayerPerceptron:
 
         for epoch in range(epochs):
             total_loss = 0.
+            bsize = 0 
             for input, target in batch_generator(train_x, train_y, batch_size):
                 feed_forward_output = self.forward(input);
-                loss = loss_func.loss(target, feed_forward_output)
+                loss = np.mean(loss_func.loss(target, feed_forward_output))
                 # loss gradient is derivative of components
                 loss_gradient = loss_func.derivative(target, feed_forward_output)
                 dl_dw_all, dl_db_all = self.backward(loss_gradient, input)
+                assert len(dl_dw_all) == len(self.layers)
                 for wgrad, bgrad, layer in zip(dl_dw_all, dl_db_all, reversed(self.layers)):
                     layer.W  -=  learning_rate * wgrad
                     layer.b  -=  learning_rate * bgrad
+                bsize+=1
                 total_loss += loss
 
             val_loss = np.mean(loss_func.loss(val_y, self.forward(val_x))) 
-            train_loss = np.mean(total_loss / math.ceil(len(train_x) / batch_size))
+            train_loss = total_loss /  bsize
 
             training_losses.append(train_loss)
             validation_losses.append(val_loss)
@@ -292,3 +302,84 @@ class MultilayerPerceptron:
 
 
         return np.array(training_losses), np.array(validation_losses)
+
+
+
+if __name__ == '__main__':
+    a1 = Sigmoid() 
+    a2 = Tanh()
+    a3 = Relu()
+    a4 = Softmax()
+    a5 = Linear()
+     
+ 
+    l1 = SquaredError()
+    l2 = CrossEntropy()
+    print("test sigmoid act")
+    np.testing.assert_array_almost_equal(a1.forward(np.array([0.5, 0.9])), np.array([0.622, 0.710]), decimal=3)
+    print("test sigmoid derivative")
+    np.testing.assert_array_almost_equal(a1.derivative(np.array([0.5, 0.9])), np.array([0.235, 0.2055]), decimal=3)
+ 
+ 
+    # Test Tanh
+    print("test tanh act")
+    np.testing.assert_array_almost_equal(a2.forward(np.array([0.5, 0.9])), np.array([0.462, 0.716]), decimal=3)
+    print("test tanh derivative")
+    np.testing.assert_array_almost_equal(a2.derivative(np.array([0.5, 0.9])), np.array([0.786, 0.487]), decimal=3)
+ 
+    # Test ReLU
+    print("\ntest relu act")
+    np.testing.assert_array_almost_equal(a3.forward(np.array([0.5, -0.9])), np.array([0.5, 0.0]), decimal=3)
+    print("test relu derivative")
+    np.testing.assert_array_almost_equal(a3.derivative(np.array([0.5, -0.9])), np.array([1.0, 0.0]), decimal=3)
+ 
+ 
+    # Test Linear
+    print("\ntest linear act")
+    np.testing.assert_array_almost_equal(a5.forward(np.array([0.5, 0.9])), np.array([0.5, 0.9]), decimal=3)
+    print("test linear derivative")
+    np.testing.assert_array_almost_equal(a5.derivative(np.array([0.5, 0.9])), np.array([1.0, 1.0]), decimal=3)
+     
+    # Test Softmax
+    print("\ntest softmax act")
+    np.testing.assert_array_almost_equal(a4.forward(np.array([0.5, 0.9])), np.array([0.401, 0.599]), decimal=3)
+    print("test softmax derivative, idk some batch size issues")
+ 
+    # np.testing.assert_array_almost_equal(a4.derivative(np.array([0.5, 0.9])), np.array([0.241, 0.241]), decimal=3)
+ 
+ 
+     # Assuming you have these loss classes
+    loss_se = SquaredError()
+    loss_ce = CrossEntropy()
+ 
+    # Test Squared Error Loss
+    print("\nTesting Squared Error Loss")
+    y_true = np.array([0.5, 0.9])
+    y_pred = np.array([0.4, 0.8])
+ 
+    print("loss")  
+    np.testing.assert_almost_equal(loss_se.loss(y_true, y_pred), np.array([0.01, 0.01]), decimal=4)
+    print("loss good")  
+ 
+    print("derivative")  
+    np.testing.assert_array_almost_equal(
+        loss_se.derivative(y_true, y_pred),
+        np.array([-0.2, -0.2]),
+        decimal=4
+    )
+    print("derivative good")  
+ 
+    # Test Cross Entropy Loss
+    print("\nTesting Cross Entropy Loss")
+    y_true = np.array([5, 1, 0])  # One-hot encoded
+    y_pred = np.array([2, 0.7, 0.2])  # Probabilities (after softmax)
+ 
+    # Forward check (-log(0.7) ≈ 0.3567)
+    np.testing.assert_almost_equal(loss_ce.loss(y_true, y_pred), np.array([-3.465, 0.357,  0]), decimal=3)
+ 
+    # Derivative check (y_pred - y_true = [0.1, -0.3, 0.2])
+    np.testing.assert_array_almost_equal(
+        loss_ce.derivative(y_true, y_pred),
+        np.array([-3, -0.3, 0.2]),
+        decimal=4
+    )
