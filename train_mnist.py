@@ -45,13 +45,13 @@ class MnistDataloader(object):
 
  
 
-def instantiate_model(layers: list[Layer]):
+def instantiate_model(layers: list[Layer], is_training=False):
     """
     Placeholder function to instantiate your MLP model.
     """
     print("Instantiating the MLP model...")
     
-    return MultilayerPerceptron(layers)
+    return MultilayerPerceptron(layers, is_training=is_training)
 
 
 def main():
@@ -110,7 +110,7 @@ def main():
         loss_func=loss,
         learning_rate=1E-3,
         batch_size=32,
-        epochs=20
+        epochs=18
     )
 
     predicted_labels  = np.argmax(model.forward(test_x), axis=1)
@@ -128,7 +128,7 @@ def main():
         if len(indices) == 10:
             break
         if el not in found:
-            indices.append(i)
+            indices.append([i])
             found.add(el)
             
     # Extract one example of each digit

@@ -128,7 +128,7 @@ class CrossEntropy(LossFunction):
 
 
 class Layer:
-    def __init__(self, fan_in: int, fan_out: int, activation_function: ActivationFunction):
+    def __init__(self, fan_in: int, fan_out: int, activation_function: ActivationFunction, dropout:float=1.0):
         """
         Initializes a layer of neurons
 
@@ -148,7 +148,8 @@ class Layer:
         self.Z: np.ndarray
         # this will store the delta term (dL_dPhi, backward prop)
         self.delta: np.ndarray|None = None
-
+        # https://stackoverflow.com/a/54170758/14709144
+        self.dropout = dropout
         # Initialize weights and biaes
 
         # we need a weights matrix where each row is a connection between this layer and next
@@ -159,16 +160,22 @@ class Layer:
         self.b = np.random.rand(fan_out) # biases
         print("bias shape", self.b.shape)
 
-    def forward(self, h: np.ndarray, dropout:float=1.0) -> np.ndarray:
+    def forward(self, h: np.ndarray) -> np.ndarray:
         """
         Computes the activations for this layer
 
         :param h: input to layer
         :return: layer activations
         """
-        
+
         self.Z = (h @ self.W) + self.b
         self.activations = self.activation_function.forward(self.Z)
+
+        drop = np.random.rand(*self.activations.shape) < self.dropout
+
+        self.activations = np.multiply(self.activations, drop)
+        self.activations = self.activations / self.dropout
+
         return self.activations
 
     def backward(self, 
@@ -207,7 +214,7 @@ class Layer:
 
 
 class MultilayerPerceptron:
-    def __init__(self, layers: List[Layer]):
+    def __init__(self, layers: List[Layer], is_training=True):
         """
         Create a multilayer perceptron (densely connected multilayer neural network)
         :param layers: list or Tuple of layers
@@ -282,6 +289,7 @@ class MultilayerPerceptron:
         :param epochs: number of epochs
         :return:
         """
+        learning_rate = learning_rate
         training_losses = []
         validation_losses = [] 
 
