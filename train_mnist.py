@@ -1,7 +1,5 @@
 #!/usr/bin/env python3
-import argparse
-import os
-from mlp import ActivationFunction, CrossEntropy, Layer, Linear, MultilayerPerceptron, Relu, Sigmoid, Softmax, SquaredError, Tanh, batch_generator
+from mlp import ActivationFunction, CrossEntropy, Layer, LeakyRelu, Linear, MultilayerPerceptron, Relu, Sigmoid, Softmax, SquaredError, Tanh, batch_generator
 import struct
 import numpy as np
 from array import array
@@ -36,7 +34,7 @@ class MnistDataloader(object):
         for i in range(size):
             img = np.array(image_data[i * rows * cols:(i + 1) * rows * cols])
             img = img.reshape(28, 28)
-            images[i][:] = img            
+            images[i][:] = img
         
         return images, labels
             
@@ -46,25 +44,6 @@ class MnistDataloader(object):
         return (np.array(x_train), np.array(y_train)),(np.array(x_test), np.array(y_test))        
 
  
-
-def download_mnist(data_dir):
-    """
-    Placeholder function to download the MNIST dataset.
-    In a full implementation, you might use libraries such as torchvision,
-    tensorflow.keras.datasets, or another method to retrieve and save the data.
-    """
-    print(f"Downloading MNIST dataset into '{data_dir}'...")
-    # Here you would add the code to download the dataset.
-    # For example, using torchvision.datasets.MNIST(root=data_dir, download=True)
-    print("Download complete.")
-
-def split_dataset(data_dir):
-    """
-    Placeholder function to split the MNIST dataset into training and validation sets.
-    """
-    print("Splitting dataset into training and validation sets...")
-    # Insert code here to split the dataset.
-    print("Dataset split complete.")
 
 def instantiate_model(layers: list[Layer]):
     """
@@ -76,88 +55,89 @@ def instantiate_model(layers: list[Layer]):
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="Train a Multi-Layer Perceptron on the MNIST dataset."
+    # Instantiate and train the model.
+    model = instantiate_model([
+        Layer(fan_in=28*28,  fan_out=64,       activation_function=  Relu()),
+        Layer(fan_in=64,    fan_out=87,       activation_function= Relu()), 
+        Layer(fan_in=87,    fan_out=72,       activation_function= LeakyRelu()), 
+        Layer(fan_in=72,     fan_out=10,       activation_function= Softmax()), 
+    ])
+    loss = CrossEntropy()
+    mnist_dataloader = MnistDataloader(
+        training_images_filepath="data/train-images.idx3-ubyte",
+        training_labels_filepath="./data/train-labels.idx1-ubyte",
+        test_images_filepath="./data/t10k-images.idx3-ubyte",
+        test_labels_filepath="./data/t10k-labels.idx1-ubyte",
     )
-    parser.add_argument(
-        "--epochs",
-        type=int,
-        default=32,
-        help="Number of training epochs."
+    (train_x, train_y), (test_x, test_y) = mnist_dataloader.load_data()
+    train_x = train_x.reshape(train_x.shape[0], 784) 
+    test_x =  test_x.reshape(test_x.shape[0], 784) 
+    x_mean = np.mean(train_x)
+    x_std = np.std(test_x)
+
+    train_x = (train_x - x_mean) / x_std 
+    test_x = (test_x - x_mean)  /  x_std
+
+    
+    train_y = np.eye(10)[train_y]
+    prev_test_y = np.copy(test_y)
+    test_y = np.eye(10)[test_y]
+
+    np.testing.assert_array_equal(np.argmax(test_y, axis=1), prev_test_y)
+
+    train_data = np.array(list(zip(train_x, train_y)), dtype=object)  # Convert to NumPy array
+
+    # Shuffle the data to ensure randomness
+    np.random.shuffle(train_data)
+
+    # Calculate the split index
+    split_idx = int(0.8 * len(train_data))  # 80% for training, 20% for validation
+
+    # Split the data
+    train_split = train_data[:split_idx]  # First 80% for training
+    val_split = train_data[split_idx:]    # Remaining 20% for validation
+
+    # Separate features (images) and labels
+    train_x_split = np.array([item[0] for item in train_split])
+    train_y_split = np.array([item[1] for item in train_split])
+    val_x_split = np.array([item[0] for item in val_split])
+    val_y_split = np.array([item[1] for item in val_split])
+    model.train( 
+        train_x=train_x_split,
+        train_y=train_y_split,
+        val_x=val_x_split,
+        val_y=val_y_split,
+        loss_func=loss,
+        learning_rate=1E-3,
+        batch_size=32,
+        epochs=20
     )
-    parser.add_argument(
-        "--batch-size",
-        type=int,
-        default=32,
-        help="Training batch size."
-    )
-    parser.add_argument(
-        "--train",
-        action="store_true",
-        help="Train the MLP model."
-    )
 
-    args = parser.parse_args()
+    predicted_labels  = np.argmax(model.forward(test_x), axis=1)
+    true_labels  = np.argmax(test_y, axis=1)
+    test_accuracy = np.mean(predicted_labels == true_labels)
 
-    if args.train:
-        # Instantiate and train the model.
-        δ = Relu()
-        sig = Softmax()
-        model = instantiate_model([
-            Layer(fan_in=28*28,  fan_out=128,       activation_function=  sig),
-            Layer(fan_in=128,    fan_out=72,       activation_function= sig), 
-            Layer(fan_in=72,     fan_out=10,       activation_function= sig), 
-        ])
-        loss = CrossEntropy()
-        mnist_dataloader = MnistDataloader(
-            training_images_filepath="data/train-images.idx3-ubyte",
-            training_labels_filepath="./data/train-labels.idx1-ubyte",
-            test_images_filepath="./data/t10k-images.idx3-ubyte",
-            test_labels_filepath="./data/t10k-labels.idx1-ubyte",
-        )
-        (train_x, train_y), (test_x, test_y) = mnist_dataloader.load_data()
-        train_x = train_x.reshape(train_x.shape[0], 784) / 255
-        test_x =  test_x.reshape(test_x.shape[0], 784) / 255
-        x_mean = np.mean(train_x)
-        x_std = np.std(test_x)
+    print(f"Final Test Accuracy: {test_accuracy * 100:.2f}%")
 
-        train_x = (train_x - x_mean) / x_std 
-        test_x = (test_x - x_mean)  /  x_std
+    decoded = list(enumerate(np.argmax(test_y, axis=1)))
 
-        
+    indices = []
+    found = set()
 
-        train_y = np.eye(10)[train_y]
-        train_data = np.array(list(zip(train_x, train_y)), dtype=object)  # Convert to NumPy array
-
-        # Shuffle the data to ensure randomness
-        np.random.shuffle(train_data)
-
-        # Calculate the split index
-        split_idx = int(0.8 * len(train_data))  # 80% for training, 20% for validation
-
-        # Split the data
-        train_split = train_data[:split_idx]  # First 80% for training
-        val_split = train_data[split_idx:]    # Remaining 20% for validation
-
-        # Separate features (images) and labels
-        train_x_split = np.array([item[0] for item in train_split])
-        train_y_split = np.array([item[1] for item in train_split])
-        val_x_split = np.array([item[0] for item in val_split])
-        val_y_split = np.array([item[1] for item in val_split])
-        model.train( 
-            train_x=train_x_split,
-            train_y=train_y_split,
-            val_x=val_x_split,
-            val_y=val_y_split,
-            loss_func=loss,
-            learning_rate=1E-4,
-            batch_size=16,
-            epochs=26
-        )
-
-
-        print(test_y[0])
-        print(model.forward(test_x[0]))
+    for i, el in decoded:
+        if len(indices) == 10:
+            break
+        if el not in found:
+            indices.append(i)
+            found.add(el)
+            
+    # Extract one example of each digit
+    selected_images = test_x[indices]
+    selected_labels = test_y[indices]
+            
+    for img, lbl in zip(selected_images, selected_labels):
+        print("Predicted:", np.argmax(model.forward(img)), "true:", np.argmax(lbl))
+    
 
 if __name__ == "__main__":
     main()

@@ -1,14 +1,15 @@
 from ucimlrepo import fetch_ucirepo
 import pandas as pd
-from itertools import chain, combinations
-from mlp import Layer, Linear, MultilayerPerceptron, Relu, Sigmoid, Softmax, SquaredError
+import numpy as np
+from mlp import Layer, Linear, MultilayerPerceptron, Relu,  SquaredError
 from sklearn.model_selection import train_test_split
 
 
 
 def get_mpg_dataset():
-    # fetch dataset
+    print("fetching dataset")
     auto_mpg = fetch_ucirepo(id=9)
+    print("done fetching dataset")
 
     # data (as pandas dataframes)
     X = auto_mpg.data.features
@@ -66,22 +67,26 @@ X_train,y_train, X_val, y_val, X_test, y_test = get_mpg_dataset()
 activation = Linear()
 model = MultilayerPerceptron(
     layers=[
-        Layer(fan_in=7, fan_out=5, activation_function=activation),
-        Layer(fan_in=5, fan_out=6, activation_function=activation),
-        Layer(fan_in=6, fan_out=1, activation_function=activation),
+        Layer(fan_in=7, fan_out=1, activation_function=activation),
     ]
 )
 
-print(X_train.to_numpy().shape)
-print(y_train.to_numpy())
+# print(X_train.to_numpy().shape)
+# print(y_train.to_numpy())
 
 loss = SquaredError()
-model.train( 
+tl, vl = model.train( 
     train_x=X_train.to_numpy(),
     train_y=y_train.to_numpy().reshape(-1, 1),
     val_x=X_val.to_numpy(),
     val_y=y_val.to_numpy().reshape(-1,1),
-    loss_func=loss
+    loss_func=loss,
+    learning_rate=1E-3,
+    epochs=32
 )
 
+print("Total testing loss", np.sum(tl))
 
+for img, lbl in zip(X_test.values[:10], y_test[:10]):
+    m =model.forward(img)[0]
+    print("Predicted:", m, "true:", lbl)

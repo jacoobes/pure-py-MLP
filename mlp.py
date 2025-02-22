@@ -56,15 +56,24 @@ class Tanh(ActivationFunction):
 
 class Relu(ActivationFunction):
     def forward(self, x: np.ndarray):
-        return np.maximum(0, x)
+        return np.maximum(0., x)
 
     def derivative(self, x: np.ndarray):
         return np.heaviside(x, 1)
 
+class LeakyRelu(ActivationFunction):
+    def forward(self, x: np.ndarray):
+        return np.maximum(0.01, x)
+
+    def derivative(self, x: np.ndarray):
+        dx = np.ones_like(x)
+        dx[x < 0] = 0.01
+        return dx
+   
 class Softmax(ActivationFunction):
-    def forward(self, x):
-        exp_logits = np.exp(x - np.max(x, axis=0))  # Numerical stability improvement
-        return exp_logits / np.sum(exp_logits, axis=0)
+    def forward(self, x: np.ndarray):
+        exp_logits = np.exp(x - np.max(x, axis=-1, keepdims=True))  # Numerical stability improvement
+        return exp_logits / np.sum(exp_logits, axis=-1, keepdims=True)
 
     def derivative(self, x):
         if len(x.shape) == 1:
@@ -108,7 +117,9 @@ class SquaredError(LossFunction):
 # https://shivammehta25.github.io/posts/deriving-categorical-cross-entropy-and-softmax/
 class CrossEntropy(LossFunction):
     def loss(self, y_true, y_pred) -> np.ndarray:
-        return -(y_true * np.log(y_pred))
+        n = y_true.shape[0]
+        loss = -(y_true * np.log(y_pred + 1e-9)) / n # Adding a small epsilon to prevent log(0)
+        return loss
         
 
     def derivative(self, y_true, y_pred) -> np.ndarray:
@@ -148,13 +159,14 @@ class Layer:
         self.b = np.random.rand(fan_out) # biases
         print("bias shape", self.b.shape)
 
-    def forward(self, h: np.ndarray) -> np.ndarray:
+    def forward(self, h: np.ndarray, dropout:float=1.0) -> np.ndarray:
         """
         Computes the activations for this layer
 
         :param h: input to layer
         :return: layer activations
         """
+        
         self.Z = (h @ self.W) + self.b
         self.activations = self.activation_function.forward(self.Z)
         return self.activations
@@ -180,7 +192,6 @@ class Layer:
         else:
             dL_dZ = np.multiply(delta, dO_dZ)
 
-        #print("prev shape", prev.T.shape, "hadmard shape", dL_dZ.shape)
         dL_dW = prev.T @ dL_dZ
         assert dL_dW.shape == self.W.shape
 
@@ -196,15 +207,12 @@ class Layer:
 
 
 class MultilayerPerceptron:
-    def __init__(self, layers: List[Layer], clip_value=None):
+    def __init__(self, layers: List[Layer]):
         """
         Create a multilayer perceptron (densely connected multilayer neural network)
         :param layers: list or Tuple of layers
         """
-        assert len(layers) >= 3
-
         self.layers = layers
-        self.clip_value=clip_value
 
     def forward(self, x: np.ndarray) -> np.ndarray:
         """
@@ -257,7 +265,7 @@ class MultilayerPerceptron:
         val_x: np.ndarray,
         val_y: np.ndarray,
         loss_func: LossFunction,
-        learning_rate: float=1e-2, 
+        learning_rate: float=1e-3, 
         batch_size: int=32,
         epochs: int=42
     ) -> Tuple[np.ndarray, np.ndarray]:
@@ -279,22 +287,27 @@ class MultilayerPerceptron:
 
         for epoch in range(epochs):
             total_loss = 0.
-            bsize = 0 
             for input, target in batch_generator(train_x, train_y, batch_size):
                 feed_forward_output = self.forward(input);
-                loss = np.mean(loss_func.loss(target, feed_forward_output))
                 # loss gradient is derivative of components
                 loss_gradient = loss_func.derivative(target, feed_forward_output)
                 dl_dw_all, dl_db_all = self.backward(loss_gradient, input)
                 assert len(dl_dw_all) == len(self.layers)
+
                 for wgrad, bgrad, layer in zip(dl_dw_all, dl_db_all, reversed(self.layers)):
-                    layer.W  -=  learning_rate * wgrad
-                    layer.b  -=  learning_rate * bgrad
-                bsize+=1
+                    layer.W  -= learning_rate * wgrad 
+                    layer.b  -= learning_rate * bgrad 
+                #print("loss", loss_func.loss(target, self.forward(input))) 
+                loss = np.mean(loss_func.loss(target, self.forward(input)))
                 total_loss += loss
 
-            val_loss = np.mean(loss_func.loss(val_y, self.forward(val_x))) 
-            train_loss = total_loss / bsize
+            totalvloss = 0
+            for input, target in batch_generator(train_x, train_y, batch_size):
+                val_loss = np.mean(loss_func.loss(target, self.forward(input))) 
+                totalvloss += val_loss
+            
+            train_loss = total_loss / batch_size
+            val_loss = totalvloss / batch_size
 
             training_losses.append(train_loss)
             validation_losses.append(val_loss)
@@ -303,6 +316,18 @@ class MultilayerPerceptron:
 
 
         return np.array(training_losses), np.array(validation_losses)
+
+    def save_weights(self):
+        trained_stuff = [a for lyr in self.layers 
+                            for a in (lyr.W, lyr.b)] 
+        np.savez("./model.npz", *trained_stuff)
+
+    def load_weights(self):
+        import itertools
+        for cfg, layer in zip(itertools.pairwise(np.load("./model.npz")), self.layers):
+            w, b = cfg
+            layer.W = w 
+            layer.b = b
 
 
 
@@ -343,7 +368,8 @@ if __name__ == '__main__':
     print("\ntest softmax act")
     np.testing.assert_array_almost_equal(a4.forward(np.array([0.5, 0.9])), np.array([0.401, 0.599]), decimal=3)
     print("test softmax derivative, idk some batch size issues")
- 
+    
+
     # np.testing.assert_array_almost_equal(a4.derivative(np.array([0.5, 0.9])), np.array([0.241, 0.241]), decimal=3)
  
  
@@ -370,11 +396,11 @@ if __name__ == '__main__':
  
     # Test Cross Entropy Loss
     print("\nTesting Cross Entropy Loss")
-    y_true = np.array([5, 1, 0])  # One-hot encoded
-    y_pred = np.array([2, 0.7, 0.2])  # Probabilities (after softmax)
+    y_true = np.array([[5, 1, 0]])  # One-hot encoded
+    y_pred = np.array([[2, 0.7, 0.2]])  # Probabilities (after softmax)
  
     # Forward check (-log(0.7) ≈ 0.3567)
-    np.testing.assert_almost_equal(loss_ce.loss(y_true, y_pred), np.array([-3.465, 0.357,  0]), decimal=3)
+    np.testing.assert_array_almost_equal(loss_ce.loss(y_true, y_pred), np.array([-3.465, 0.357,  0]), decimal=3)
  
     # Derivative check (y_pred - y_true = [0.1, -0.3, 0.2])
     np.testing.assert_array_almost_equal(
@@ -382,3 +408,31 @@ if __name__ == '__main__':
         np.array([-3, -0.3, 0.2]),
         decimal=4
     )
+
+
+    np.random.seed(42)
+    # Generate random input vector
+    x = np.random.rand(5)
+
+
+
+    probs = a4.forward(x)
+    print("Input vector (x):", x)
+    true_class = np.random.randint(0, 5)
+    y_true = np.zeros(5)
+    y_true[true_class] = 1
+
+    
+    print("\nTrue class index:", true_class)
+    print("Target vector (y_true):", y_true)
+    loss = loss_ce.loss(y_true, probs)
+    print("\nCross-entropy loss:", loss)
+    loss_grad = loss_ce.derivative(y_true, probs)
+
+    print("\nBackpropagation gradient (dL/dx):", loss_grad)
+
+    print("\nVerification:")
+    print("Sum of probabilities:", np.sum(probs))
+    print("Sum of gradient:", np.sum(loss_grad))
+    print("If correct, the gradient element corresponding to the true class should be (probability - 1)")
+    print(f"True class gradient element: {loss_grad[true_class]:.4f} (should be {probs[true_class]-1:.4f})")
